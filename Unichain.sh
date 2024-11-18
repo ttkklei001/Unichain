@@ -19,7 +19,7 @@ DOCKER_COMPOSE_VERSION="2.20.2"
 ETH_RPC_URL="https://ethereum-sepolia-rpc.publicnode.com"
 BEACON_API_URL="https://ethereum-sepolia-beacon-api.publicnode.com"
 NODE_DIR="unichain-node"
-NODEKEY_PATH="$NODE_DIR/geth-data/geth/nodekey"  # 设置私钥路径
+NODEKEY_PATH="$NODE_DIR/geth-data/geth/nodekey"
 DOCKER_COMPOSE_FILE="$NODE_DIR/docker-compose.yml"
 
 # 显示菜单头部信息
@@ -49,7 +49,6 @@ show_menu() {
     echo -e "${KEY_ICON} 4. 导出私钥"
     echo -e "🚪 5. 退出"
     echo -e "${BLUE}====================================================${NC}"
-    read -p "请选择一个选项 [1-5]: " choice
 }
 
 # 导入私钥
@@ -76,11 +75,13 @@ install_node() {
         sudo apt install -y docker.io
         sudo systemctl enable docker
         sudo systemctl start docker
-    else
-        echo -e "${GREEN}${CHECK_MARK} Docker 已安装。${NC}"
+        if ! command -v docker &> /dev/null; then
+            echo -e "${RED}${CROSS_MARK} Docker 安装失败！${NC}"
+            exit 1
+        fi
     fi
 
-    if ! command -v docker-compose &> /dev/null; then
+    if ! command -v docker-compose &> /dev/null || [[ "$(docker-compose --version)" != *"$DOCKER_COMPOSE_VERSION"* ]]; then
         echo -e "${PACKAGE_ICON} 安装 Docker Compose..."
         sudo curl -L "https://github.com/docker/compose/releases/download/v$DOCKER_COMPOSE_VERSION/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
         sudo chmod +x /usr/local/bin/docker-compose
@@ -91,16 +92,12 @@ install_node() {
         git clone https://github.com/Uniswap/unichain-node
     else
         echo -e "${GREEN}${CHECK_MARK} Unichain 仓库已存在，更新中...${NC}"
-        cd $NODE_DIR
-        git pull
-        cd ..
+        cd $NODE_DIR && git pull && cd ..
     fi
 
     read -p "是否要导入现有私钥？(y/n): " import_key_choice
-    if [[ "$import_key_choice" == "y" || "$import_key_choice" == "Y" ]]; then
+    if [[ "$import_key_choice" =~ ^[yY]$ ]]; then
         import_private_key
-    else
-        echo -e "${YELLOW}跳过私钥导入，使用新生成的密钥。${NC}"
     fi
 
     cd $NODE_DIR
@@ -113,12 +110,12 @@ install_node() {
     echo -e "${GREEN}${CHECK_MARK} 节点安装完成！${NC}"
 }
 
-# 查看节点日志
+# 查看节点日志（仅显示最后 100 行）
 view_logs() {
     if check_node_installed && check_docker_running; then
-        echo -e "${WRENCH_ICON} 显示节点日志..."
+        echo -e "${WRENCH_ICON} 显示节点日志（仅显示最后 100 行）..."
         cd $NODE_DIR
-        docker-compose logs -f
+        docker-compose logs --tail 100 -f
     else
         echo -e "${RED}${CROSS_MARK} 节点未安装或未运行！${NC}"
     fi
@@ -129,15 +126,10 @@ uninstall_node() {
     if check_node_installed; then
         echo -e "${CROSS_MARK} 停止并删除 Unichain 节点容器..."
         cd $NODE_DIR
-        if check_docker_running; then
-            docker-compose down
-            echo -e "${GREEN}${CHECK_MARK} Docker 容器已停止。${NC}"
-        else
-            echo -e "${YELLOW}未找到正在运行的 Docker 容器。${NC}"
-        fi
+        docker-compose down
         cd ..
         rm -rf "$NODE_DIR"
-        echo -e "${GREEN}${CHECK_MARK} 卸载完成（依赖未删除）！${NC}"
+        echo -e "${GREEN}${CHECK_MARK} 卸载完成！${NC}"
     else
         echo -e "${RED}${CROSS_MARK} 节点未安装！${NC}"
     fi
@@ -148,7 +140,7 @@ export_private_key() {
     if [ -f "$NODEKEY_PATH" ]; then
         echo -e "${KEY_ICON} 导出私钥..."
         cat "$NODEKEY_PATH"
-        echo -e "${YELLOW}请妥善保管此私钥（请勿泄露）！${NC}"
+        echo -e "${YELLOW}请妥善保管此私钥！${NC}"
     else
         echo -e "${RED}${CROSS_MARK} 未找到私钥文件！${NC}"
     fi
@@ -158,6 +150,7 @@ export_private_key() {
 while true; do
     show_header
     show_menu
+    read -p "请选择一个选项 [1-5]: " choice
     case $choice in
         1) install_node ;;
         2) view_logs ;;
