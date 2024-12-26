@@ -21,6 +21,7 @@ BEACON_API_URL="https://ethereum-sepolia-beacon-api.publicnode.com"
 NODE_DIR="unichain-node"
 NODEKEY_PATH="$NODE_DIR/geth-data/geth/nodekey"
 DOCKER_COMPOSE_FILE="$NODE_DIR/docker-compose.yml"
+SERVICE_FILE_PATH="/etc/systemd/system/unichain-node.service"
 
 # 显示菜单头部信息
 show_header() {
@@ -47,7 +48,8 @@ show_menu() {
     echo -e "${WRENCH_ICON} 2. 查看节点日志"
     echo -e "${CROSS_MARK} 3. 卸载 Unichain 节点（保留依赖）"
     echo -e "${KEY_ICON} 4. 导出私钥"
-    echo -e "🚪 5. 退出"
+    echo -e "${WRENCH_ICON} 5. 设置开机自启"
+    echo -e "🚪 6. 退出"
     echo -e "${BLUE}====================================================${NC}"
 }
 
@@ -146,17 +148,45 @@ export_private_key() {
     fi
 }
 
+# 设置开机自启
+set_autostart() {
+    if [ ! -f "$SERVICE_FILE_PATH" ]; then
+        echo -e "${PACKAGE_ICON} 创建 systemd 服务文件..."
+        sudo bash -c "cat > $SERVICE_FILE_PATH << EOF
+[Unit]
+Description=Unichain Node
+After=docker.service
+Requires=docker.service
+
+[Service]
+ExecStart=/usr/local/bin/docker-compose -f $NODE_DIR/docker-compose.yml up
+ExecStop=/usr/local/bin/docker-compose -f $NODE_DIR/docker-compose.yml down
+Restart=always
+WorkingDirectory=$NODE_DIR
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+        sudo systemctl daemon-reload
+        sudo systemctl enable unichain-node.service
+        echo -e "${GREEN}${CHECK_MARK} 开机自启已设置！${NC}"
+    else
+        echo -e "${GREEN}${CHECK_MARK} 系统已设置开机自启！${NC}"
+    fi
+}
+
 # 主程序循环
 while true; do
     show_header
     show_menu
-    read -p "请选择一个选项 [1-5]: " choice
+    read -p "请选择一个选项 [1-6]: " choice
     case $choice in
         1) install_node ;;
         2) view_logs ;;
         3) uninstall_node ;;
         4) export_private_key ;;
-        5) echo -e "${GREEN}退出程序${NC}"; exit 0 ;;
+        5) set_autostart ;;
+        6) echo -e "${GREEN}退出程序${NC}"; exit 0 ;;
         *) echo -e "${RED}无效选项，请重新输入${NC}";;
     esac
 done
